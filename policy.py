@@ -50,6 +50,7 @@ def fill_queue(path, epochs, board_size = 19):
                 f.close()
 
             while game_data:
+                time.sleep(0.01)
                 if data_q.qsize() < (9000):
                     try:
                 #print(data_q.qsize())
@@ -62,6 +63,7 @@ def fill_queue(path, epochs, board_size = 19):
                             continue;
 
                         else:
+
                             # Pick the next move
                             inp, target, game_boards[chose] = add_to(game_boards[chose],
                             game_data[chose][game_progress[chose]], game_data[chose][game_progress[chose] + 1])
@@ -84,7 +86,7 @@ def fill_queue(path, epochs, board_size = 19):
                             #pygame.event.get()
                             #print("INSERTED")
                     except Exception as ex:
-                        print("thread-1 failed:", ex)
+                        print("thread-1 failed:", ex, game_data[chose][game_progress[chose]], game_data[chose][game_progress[chose] + 1])
                         continue;
 
     data_q.put(['DONE', 'DONE'], block = True)
@@ -167,12 +169,12 @@ def add_to(board, move, future_move, board_size = 19):
             # Empty intersections are always on feature map 0
             # Feature map 3 is reserved for boundary management.
             if player:
-                return_board[board[y][x] + 1][y][x] = 1
+                return_board[int(board[y][x] + 1)][y][x] = 1
             else:
                 if board[y][x] == -1:
                     return_board[0][y][x] = 1
                 else:
-                    return_board[2 - board[y][x]][y][x] = 1
+                    return_board[int(2 - board[y][x])][y][x] = 1
 
     return return_board, return_target.flatten(), board
 
@@ -243,27 +245,30 @@ def display_(stones, evaluation, target, screen, board_size = 19):
     pygame.display.flip()
 
 if __name__ == "__main__":
+    from keras.models import load_model
     fill = threading.Thread(target = fill_queue, args = ('stripped-games', 1))
     fill.start()
 
-    model = Sequential()
-    model.add(keras.layers.convolutional.Conv2D(filters = 12, kernel_size = 5, padding = 'same', use_bias = True, input_shape = (4, 19, 19), activation = 'relu', data_format = 'channels_first'))
+    #model = Sequential()
+    #model.add(keras.layers.convolutional.Conv2D(filters = 129, kernel_size = 5, padding = 'same', use_bias = True, input_shape = (4, 19, 19), activation = 'relu', data_format = 'channels_first'))
 
-    for i in range (10):
-        model.add(keras.layers.convolutional.Conv2D(filters = 12, kernel_size = 5, padding = 'same', use_bias = True, activation = 'relu', data_format = 'channels_first'))
+    #for i in range (10):
+    #    model.add(keras.layers.convolutional.Conv2D(filters = 129, kernel_size = 5, padding = 'same', use_bias = True, activation = 'relu', data_format = 'channels_first'))
 
-    model.add(keras.layers.convolutional.Conv2D(filters = 1, kernel_size = 1, padding = 'same', use_bias = True, data_format = 'channels_first'))
+    #model.add(keras.layers.convolutional.Conv2D(filters = 1, kernel_size = 1, padding = 'same', use_bias = True, data_format = 'channels_first'))
 
-    model.add(keras.layers.core.Flatten())
+    #model.add(keras.layers.core.Flatten())
 
-    model.add(keras.layers.Activation('softmax'))
+    #model.add(keras.layers.Activation('softmax'))
 
-    model.compile(optimizer = 'rmsprop', loss = 'categorical_crossentropy')
+    #model.compile(optimizer = keras.optimizers.RMSprop(lr = 0.0001), loss = 'categorical_crossentropy', metrics = ['accuracy'])
+
+    model = load_model('checkpoints/model_6001.h5')
 
     # pop 32 elements from our queue
 
     screen = pygame.display.set_mode((760, 760))
-
+    c = 0
     while True:
         for event in pygame.event.get():
             if event == pygame.QUIT:
@@ -281,10 +286,21 @@ if __name__ == "__main__":
             batch_x.append(inp)
             batch_y.append(tar)
 
-        print(model.train_on_batch(np.array(batch_x), np.array(batch_y)))
+        l, a = model.train_on_batch(np.array(batch_x), np.array(batch_y))
         test = np.array(model.predict(np.array([batch_x[0]]), batch_size = 1)).reshape([19, 19])
 
-        display_(batch_x[0], test, np.array(batch_y[0]).reshape([19, 19]), screen)
+        print(l, a)
+
+        c += 1
+        if c % 10 == 1:
+            display_(batch_x[0], test, np.array(batch_y[0]).reshape([19, 19]), screen)
+
+        if c % 1000 == 1:
+            if l > 7:
+                del model
+                model = load_model('checkpoints/model_' + str(c + 7000 - 1000) + '.h5')
+            else:
+                model.save('checkpoints/model_' + str(c) + '.h5')
 
     fill.join()
 
